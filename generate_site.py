@@ -32,11 +32,13 @@
 4) pip install requests
 """
 
+import calendar
 import html
+import json
 import os
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -46,8 +48,17 @@ ASSEMBLY_API_KEY = os.environ.get("ASSEMBLY_API_KEY", "")
 
 NAVER_CLIENT_ID = os.environ.get("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = os.environ.get("NAVER_CLIENT_SECRET", "")
-NEWS_QUERY = "카카오모빌리티"
-NEWS_LIMIT = 8
+
+# 뉴스 클리핑 검색 키워드 (원하는 만큼 자유롭게 추가/삭제하세요).
+# 네이버 검색 API는 "A OR B" 검색을 지원하지 않아서, 키워드마다 따로 검색한 뒤
+# 결과를 합치고 중복을 제거하는 방식으로 동작합니다.
+NEWS_QUERIES = [
+    "카카오모빌리티",
+    "카카오T",
+    "카모",
+]
+NEWS_LIMIT_PER_QUERY = 8   # 키워드 하나당 가져올 기사 수
+NEWS_LIMIT_TOTAL = 12      # 합친 뒤 최종적으로 페이지에 보여줄 최대 기사 수
 
 # 법안 발의 현황에서 필터링할 키워드 (bill_monitor.py와 동일한 관심사)
 BILL_KEYWORDS = [
@@ -89,32 +100,54 @@ def fetch_mobility_news():
     if not (NAVER_CLIENT_ID and NAVER_CLIENT_SECRET):
         return None  # 설정 안 됨 (섹션에 안내 문구 표시용)
 
-    try:
-        resp = requests.get(
-            "https://naverapihub.apigw.ntruss.com/search/v1/news",
-            headers={
-                "X-NCP-APIGW-API-KEY-ID": NAVER_CLIENT_ID,
-                "X-NCP-APIGW-API-KEY": NAVER_CLIENT_SECRET,
-            },
-            params={"query": NEWS_QUERY, "display": NEWS_LIMIT, "sort": "date"},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        items = resp.json().get("items", [])
-        news = []
+    seen_links = set()
+    all_news = []
+
+    for query in NEWS_QUERIES:
+        try:
+            resp = requests.get(
+                "https://naverapihub.apigw.ntruss.com/search/v1/news",
+                headers={
+                    "X-NCP-APIGW-API-KEY-ID": NAVER_CLIENT_ID,
+                    "X-NCP-APIGW-API-KEY": NAVER_CLIENT_SECRET,
+                },
+                params={"query": query, "display": NEWS_LIMIT_PER_QUERY, "sort": "date"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            items = resp.json().get("items", [])
+        except Exception as e:
+            print(f"[경고] 뉴스 조회 실패 (검색어: {query}): {e}")
+            continue
+
         for item in items:
-            news.append(
+            link = item.get("originallink") or item.get("link") or ""
+            if link in seen_links:
+                continue  # 다른 키워드에서 이미 가져온 기사면 건너뜀 (중복 제거)
+            seen_links.add(link)
+            all_news.append(
                 {
                     "title": strip_html(item.get("title")),
                     "summary": strip_html(item.get("description")),
-                    "link": item.get("originallink") or item.get("link") or "",
+                    "link": link,
                     "pub_date": item.get("pubDate", ""),
                 }
             )
-        return news
-    except Exception as e:
-        print(f"[경고] 뉴스 조회 실패: {e}")
-        return []
+
+    # 최신순으로 다시 정렬 (pubDate는 RFC 822 형식이라 문자열 비교가 정확하지 않을 수 있어
+    # 파싱 가능한 경우만 정렬하고, 실패하면 원래 순서를 유지한다)
+    def parse_date(n):
+        try:
+            return datetime.strptime(n["pub_date"], "%a, %d %b %Y %H:%M:%S %z")
+        except Exception:
+            return datetime.min.replace(tzinfo=timezone.utc)
+
+    try:
+        all_news.sort(key=parse_date, reverse=True)
+    except Exception:
+        pass
+
+    return all_news[:NEWS_LIMIT_TOTAL]
 
 
 # --------------------------- 2) 법안 발의 현황 ---------------------------
@@ -191,48 +224,85 @@ def fetch_matched_bills():
     return matched_bills[:BILL_LIMIT]
 
 
-# --------------------------- 3) 오늘의 국회 일정 ---------------------------
+# --------------------------- 3) 오늘의 국회 일정 (월간 달력) ---------------------------
 
-def fetch_today_schedule():
+# 응답 안의 값들 중 날짜처럼 보이는 첫 번째 문자열을 찾기 위한 패턴
+# (2026.09.12, 2026-09-12, 2026.09.12(14:00) 등 다양한 표기를 커버)
+_DATE_PATTERN = re.compile(r"(20\d{2})[.\-](\d{1,2})[.\-](\d{1,2})")
+
+
+def extract_date_from_row(row):
+    """행(row) 안의 값들 중 날짜처럼 보이는 첫 값을 찾아 'YYYY-MM-DD'로 반환한다.
+    국회일정 API의 정확한 필드명을 몰라도 동작하도록 만든 방식이다."""
+    for v in row.values():
+        if not v:
+            continue
+        m = _DATE_PATTERN.search(str(v))
+        if m:
+            y, mo, d = m.groups()
+            try:
+                return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
+            except ValueError:
+                continue
+    return None
+
+
+def summarize_row(row):
+    """행의 값들을 사람이 읽을 수 있는 한 줄 문자열로 합친다."""
+    return " · ".join(str(v) for v in row.values() if v not in (None, ""))
+
+
+def fetch_month_schedule():
+    """이번 달 국회 일정을 날짜별로 묶어서 돌려준다: {'YYYY-MM-DD': [요약문, ...]}"""
     if not SCHEDULE_API_URL:
         return None  # 아직 엔드포인트 미설정
 
-    today_dot = get_kst_now().strftime("%Y.%m.%d")
-    today_dash = get_kst_now().strftime("%Y-%m-%d")
+    now = get_kst_now()
+    year, month = now.year, now.month
 
-    try:
-        resp = requests.get(
-            SCHEDULE_API_URL,
-            params={
-                "KEY": ASSEMBLY_API_KEY,
-                "Type": "json",
-                "pIndex": 1,
-                "pSize": 100,
-            },
-            timeout=20,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:
-        print(f"[경고] 국회일정 API 요청 실패: {e}")
-        return []
+    events_by_date = {}
+    p_index = 1
 
-    # 필드 이름을 몰라도 동작하도록, 응답 안의 모든 row를 일단 그대로 가져온다.
-    rows = []
-    for key, val in data.items():
-        if isinstance(val, list):
-            for part in val:
-                if isinstance(part, dict) and "row" in part:
-                    rows.extend(part["row"])
+    while p_index <= 20:  # 안전장치: 최대 20페이지(2,000건)까지만
+        try:
+            resp = requests.get(
+                SCHEDULE_API_URL,
+                params={
+                    "KEY": ASSEMBLY_API_KEY,
+                    "Type": "json",
+                    "pIndex": p_index,
+                    "pSize": 100,
+                },
+                timeout=20,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            print(f"[경고] 국회일정 API 요청 실패: {e}")
+            break
 
-    # 오늘 날짜가 값 어딘가에 포함된 row만 필터링 (필드명을 몰라도 되는 방식)
-    todays = []
-    for row in rows:
-        row_text = " ".join(str(v) for v in row.values())
-        if today_dot in row_text or today_dash in row_text:
-            todays.append(row)
+        rows = []
+        for key, val in data.items():
+            if isinstance(val, list):
+                for part in val:
+                    if isinstance(part, dict) and "row" in part:
+                        rows.extend(part["row"])
 
-    return todays[:SCHEDULE_LIMIT]
+        if not rows:
+            break
+
+        for row in rows:
+            date_str = extract_date_from_row(row)
+            if not date_str:
+                continue
+            y, mo, _ = map(int, date_str.split("-"))
+            if y == year and mo == month:
+                events_by_date.setdefault(date_str, []).append(summarize_row(row))
+
+        p_index += 1
+
+    return events_by_date
+
 
 
 # --------------------------- HTML 생성 ---------------------------
@@ -278,22 +348,80 @@ def render_bills_section(bills):
     return f'<ul class="list">{"".join(items)}</ul>'
 
 
-def render_schedule_section(schedule):
-    if schedule is None:
+def render_calendar_section(events_by_date):
+    if events_by_date is None:
         return (
             '<p class="empty">국회일정 API 요청주소(SCHEDULE_API_URL)가 아직 설정되지 않았어요. '
             "설정 방법은 스크립트 상단 주석을 참고하세요.</p>"
         )
-    if not schedule:
-        return '<p class="empty">오늘 예정된 일정이 없습니다.</p>'
 
-    items = []
-    for row in schedule:
-        fields = " · ".join(
-            html.escape(str(v)) for v in row.values() if v not in (None, "")
-        )
-        items.append(f'<li class="row"><p class="row-desc">{fields}</p></li>')
-    return f'<ul class="list">{"".join(items)}</ul>'
+    now = get_kst_now()
+    year, month = now.year, now.month
+    today_str = now.strftime("%Y-%m-%d")
+
+    # 일요일 시작 달력 (한국 관례)
+    cal = calendar.Calendar(firstweekday=6)
+    weeks = cal.monthdatescalendar(year, month)
+
+    day_names = ["일", "월", "화", "수", "목", "금", "토"]
+    header_html = "".join(f'<div class="cal-dayname">{d}</div>' for d in day_names)
+
+    cells_html = []
+    for week in weeks:
+        for day in week:
+            date_str = day.strftime("%Y-%m-%d")
+            in_month = day.month == month
+            classes = ["cal-day"]
+            if not in_month:
+                classes.append("cal-day--muted")
+            if date_str == today_str:
+                classes.append("cal-day--today")
+            has_events = date_str in events_by_date and events_by_date[date_str]
+            if has_events:
+                classes.append("cal-day--has-events")
+            cells_html.append(
+                f'<button type="button" class="{" ".join(classes)}" '
+                f'data-date="{date_str}" onclick="showScheduleDay(\'{date_str}\')">'
+                f'<span class="cal-day-num">{day.day}</span>'
+                f'{"<span class=\'cal-dot\'></span>" if has_events else ""}'
+                f"</button>"
+            )
+
+    calendar_html = (
+        f'<div class="cal-grid cal-grid--header">{header_html}</div>'
+        f'<div class="cal-grid">{"".join(cells_html)}</div>'
+        f'<div id="cal-detail" class="cal-detail"></div>'
+    )
+
+    # JS에서 쓸 데이터. 날짜별 요약 문자열 리스트를 그대로 넘긴다.
+    data_json = json.dumps(events_by_date, ensure_ascii=False)
+
+    script = f"""
+<script>
+  const scheduleData = {data_json};
+  function showScheduleDay(dateStr) {{
+    document.querySelectorAll('.cal-day').forEach(el => el.classList.remove('cal-day--selected'));
+    const btn = document.querySelector('.cal-day[data-date="' + dateStr + '"]');
+    if (btn) btn.classList.add('cal-day--selected');
+
+    const events = scheduleData[dateStr] || [];
+    const detail = document.getElementById('cal-detail');
+    const [y, m, d] = dateStr.split('-');
+    let html = '<p class="cal-detail-date">' + y + '년 ' + parseInt(m) + '월 ' + parseInt(d) + '일</p>';
+    if (events.length === 0) {{
+      html += '<p class="empty">이 날짜에 예정된 일정이 없습니다.</p>';
+    }} else {{
+      html += '<ul class="list">' + events.map(e =>
+        '<li class="row"><p class="row-desc">' + e.replace(/</g, '&lt;') + '</p></li>'
+      ).join('') + '</ul>';
+    }}
+    detail.innerHTML = html;
+  }}
+  showScheduleDay('{today_str}');
+</script>
+"""
+
+    return calendar_html + script
 
 
 PAGE_TEMPLATE = """<!DOCTYPE html>
@@ -408,6 +536,70 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     border-top: 1px solid var(--line);
     border-bottom: 1px solid var(--line);
   }}
+  /* 달력 */
+  .cal-grid {{
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+  }}
+  .cal-grid--header {{
+    margin-bottom: 6px;
+  }}
+  .cal-dayname {{
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    padding-bottom: 4px;
+  }}
+  .cal-day {{
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border: 1px solid var(--line);
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }}
+  .cal-day-num {{
+    font-size: 13px;
+    color: var(--text);
+  }}
+  .cal-day--muted .cal-day-num {{
+    color: var(--line);
+  }}
+  .cal-day--today {{
+    border-color: var(--ink);
+    border-width: 2px;
+  }}
+  .cal-day--selected {{
+    background: var(--ink);
+  }}
+  .cal-day--selected .cal-day-num {{
+    color: var(--paper);
+  }}
+  .cal-dot {{
+    position: absolute;
+    bottom: 5px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+  }}
+  .cal-day--selected .cal-dot {{
+    background: var(--paper);
+  }}
+  .cal-detail {{
+    margin-top: 20px;
+  }}
+  .cal-detail-date {{
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0 0 8px;
+  }}
   footer.brief-foot {{
     margin-top: 56px;
     padding-top: 16px;
@@ -439,8 +631,8 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
 
     <section class="block">
       <h2>오늘의 국회 일정</h2>
-      <p class="section-sub">국회일정 통합 API 기준</p>
-      {schedule_html}
+      <p class="section-sub">날짜를 클릭하면 그날 일정을 볼 수 있어요</p>
+      {calendar_html}
     </section>
 
     <footer class="brief-foot">
@@ -458,14 +650,14 @@ def build_html(news, bills, schedule):
         today_label=today_label,
         news_html=render_news_section(news),
         bills_html=render_bills_section(bills),
-        schedule_html=render_schedule_section(schedule),
+        calendar_html=render_calendar_section(schedule),
     )
 
 
 def main():
     news = fetch_mobility_news()
     bills = fetch_matched_bills()
-    schedule = fetch_today_schedule()
+    schedule = fetch_month_schedule()
 
     html_content = build_html(news, bills, schedule)
 
@@ -473,10 +665,11 @@ def main():
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         f.write(html_content)
 
+    total_events = sum(len(v) for v in schedule.values()) if schedule is not None else 0
     print(f"[완료] {OUTPUT_PATH} 생성됨")
     print(f"  - 뉴스: {'설정 안 됨' if news is None else f'{len(news)}건'}")
     print(f"  - 법안: {'설정 안 됨' if bills is None else f'{len(bills)}건'}")
-    print(f"  - 일정: {'설정 안 됨' if schedule is None else f'{len(schedule)}건'}")
+    print(f"  - 일정: {'설정 안 됨' if schedule is None else f'이번 달 {total_events}건'}")
 
 
 if __name__ == "__main__":
