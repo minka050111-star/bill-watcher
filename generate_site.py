@@ -379,12 +379,15 @@ def render_calendar_section(events_by_date):
             has_events = date_str in events_by_date and events_by_date[date_str]
             if has_events:
                 classes.append("cal-day--has-events")
+            class_attr = " ".join(classes)
+            dot_html = '<span class="cal-dot"></span>' if has_events else ""
             cells_html.append(
-                f'<button type="button" class="{" ".join(classes)}" '
-                f'data-date="{date_str}" onclick="showScheduleDay(\'{date_str}\')">'
-                f'<span class="cal-day-num">{day.day}</span>'
-                f'{"<span class=\'cal-dot\'></span>" if has_events else ""}'
-                f"</button>"
+                '<button type="button" class="' + class_attr + '" '
+                'data-date="' + date_str + '" '
+                "onclick=\"showScheduleDay('" + date_str + "')\">"
+                '<span class="cal-day-num">' + str(day.day) + "</span>"
+                + dot_html +
+                "</button>"
             )
 
     calendar_html = (
