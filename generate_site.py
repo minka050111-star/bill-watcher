@@ -53,7 +53,24 @@ NEWS_QUERIES = [
     "카모",
 ]
 NEWS_LIMIT_PER_QUERY = 8   # 키워드 하나당 가져올 기사 수
-NEWS_LIMIT_TOTAL = 12      # 합친 뒤 최종적으로 페이지에 보여줄 최대 기사 수
+NEWS_LIMIT_TOTAL = 30      # 합친 뒤 최종적으로 페이지에 보여줄 최대 기사 수 (카테고리별로 나뉘므로 넉넉하게)
+
+# "카모" 같은 키워드는 관련 없는 기사도 많이 걸려서, 진짜 관련 기사만 남기는 필터.
+# 제목+요약에 "카카오모빌리티"가 있거나, "카카오"와 아래 모빌리티 관련어가 같이 나와야 통과.
+NEWS_RELEVANCE_ANY_OF = [
+    "모빌리티", "카카오T", "카풀", "대리", "택시", "바이크", "주차", "내비", "퀵",
+]
+
+# 뉴스 클리핑을 대분류로 나누기 위한 카테고리 (2026년 9월 기준 카카오모빌리티 주요 이슈로 구성).
+# 위에서부터 순서대로 검사해서 먼저 매칭되는 카테고리로 분류하고, 아무 것도 안 걸리면 "기타"로 간다.
+NEWS_CATEGORIES = [
+    ("자율주행", ["자율주행", "로보택시", "무인주행", "무인"]),
+    ("IPO·상장", ["상장", "IPO", "나스닥", "증시", "매각", "TPG", "기업공개"]),
+    ("플랫폼 노동", ["대리운전", "대리기사", "퀵서비스", "배달", "노동자", "특고", "노조", "플랫폼운전자"]),
+    ("택시·요금", ["택시", "가맹", "요금", "수수료", "콜", "카카오T"]),
+    ("규제·공정위", ["공정위", "과징금", "국정감사", "독점", "규제", "소송", "재판", "제재"]),
+]
+NEWS_OTHER_CATEGORY = "기타"
 
 # 법안 발의 현황에서 필터링할 키워드 (bill_monitor.py와 동일한 관심사)
 BILL_KEYWORDS = [
@@ -74,6 +91,11 @@ SCHEDULE_API_URL = (
     os.environ.get("SCHEDULE_API_URL")
     or "https://open.assembly.go.kr/portal/openapi/ALLSCHEDULE"
 )
+
+# 국회 일정 중 이 키워드가 포함된 항목은 달력에서 눈에 띄게 표시됩니다.
+SCHEDULE_HIGHLIGHT_KEYWORDS = [
+    "플랫폼", "특고", "노동자", "배달", "카카오", "모빌리티", "자율주행",
+]
 # 한 페이지당 몇 건씩 가져올지. 이번 달 데이터를 찾을 때까지 페이지를 넘기며 훑습니다.
 SCHEDULE_PAGE_SIZE = 100
 SCHEDULE_MAX_PAGES = 60  # 안전장치: 최대 이만큼만 페이지를 넘김 (전체 9만여 건 중 일부만 훑음)
@@ -95,6 +117,24 @@ def strip_html(text):
         return ""
     text = re.sub(r"<[^>]+>", "", text)
     return html.unescape(text).strip()
+
+
+def is_relevant_news(title, summary):
+    """진짜 카카오모빌리티 관련 기사인지 판단한다.
+    '카모' 같은 느슨한 검색어로 인해 걸려온 무관한 기사를 걸러내기 위함."""
+    text = f"{title} {summary}"
+    if "카카오모빌리티" in text:
+        return True
+    return "카카오" in text and any(kw in text for kw in NEWS_RELEVANCE_ANY_OF)
+
+
+def classify_news(title, summary):
+    """기사를 NEWS_CATEGORIES 중 하나로 분류한다. 매칭 안 되면 '기타'."""
+    text = f"{title} {summary}"
+    for name, keywords in NEWS_CATEGORIES:
+        if any(kw in text for kw in keywords):
+            return name
+    return NEWS_OTHER_CATEGORY
 
 
 # --------------------------- 1) 뉴스 클리핑 ---------------------------
@@ -127,13 +167,20 @@ def fetch_mobility_news():
             link = item.get("originallink") or item.get("link") or ""
             if link in seen_links:
                 continue  # 다른 키워드에서 이미 가져온 기사면 건너뜀 (중복 제거)
+
+            title = strip_html(item.get("title"))
+            summary = strip_html(item.get("description"))
+            if not is_relevant_news(title, summary):
+                continue  # 관련 없는 기사는 건너뜀
+
             seen_links.add(link)
             all_news.append(
                 {
-                    "title": strip_html(item.get("title")),
-                    "summary": strip_html(item.get("description")),
+                    "title": title,
+                    "summary": summary,
                     "link": link,
                     "pub_date": item.get("pubDate", ""),
+                    "category": classify_news(title, summary),
                 }
             )
 
@@ -260,29 +307,30 @@ def extract_date_from_row(row):
     return None
 
 
-def summarize_row(row):
-    """행을 사람이 읽기 좋은 한 줄로 요약한다.
+def build_event(row):
+    """행을 구조화된 이벤트 정보로 만든다: {kind, time, content, committee, place}
     ALLSCHEDULE API의 필드(SCH_TM, SCH_KIND, SCH_CN, CMIT_NM, EV_PLC)가 있으면 그걸 활용하고,
-    다른 구조의 API라면 값들을 그냥 나열한다."""
+    다른 구조의 API라면 값들을 하나의 문자열로 합쳐 content에 넣는다."""
     if "SCH_CN" in row:
-        parts = []
-        if row.get("SCH_TM"):
-            parts.append(row["SCH_TM"])
-        if row.get("SCH_KIND"):
-            parts.append(f"[{row['SCH_KIND']}]")
-        if row.get("SCH_CN"):
-            parts.append(row["SCH_CN"])
-        if row.get("CMIT_NM"):
-            parts.append(f"({row['CMIT_NM']})")
-        if row.get("EV_PLC"):
-            parts.append(f"@ {row['EV_PLC']}")
-        return " ".join(parts)
+        return {
+            "kind": row.get("SCH_KIND") or "일정",
+            "time": row.get("SCH_TM") or "",
+            "content": row.get("SCH_CN") or "",
+            "committee": row.get("CMIT_NM") or "",
+            "place": row.get("EV_PLC") or "",
+        }
 
-    return " · ".join(str(v) for v in row.values() if v not in (None, ""))
+    return {
+        "kind": "일정",
+        "time": "",
+        "content": " · ".join(str(v) for v in row.values() if v not in (None, "")),
+        "committee": "",
+        "place": "",
+    }
 
 
 def fetch_month_schedule():
-    """이번 달 국회 일정을 날짜별로 묶어서 돌려준다: {'YYYY-MM-DD': [요약문, ...]}
+    """이번 달 국회 일정을 날짜별로 묶어서 돌려준다: {'YYYY-MM-DD': [이벤트dict, ...]}
 
     ALLSCHEDULE API는 전체 9만여 건을 날짜 내림차순(먼 미래 → 과거)으로 돌려주고
     별도의 날짜 필터 파라미터가 없다. 그래서 페이지를 넘기며 훑다가,
@@ -333,7 +381,7 @@ def fetch_month_schedule():
                 continue
             y, mo, _ = map(int, date_str.split("-"))
             if y == year and mo == month:
-                events_by_date.setdefault(date_str, []).append(summarize_row(row))
+                events_by_date.setdefault(date_str, []).append(build_event(row))
                 found_target_month = True
                 page_all_before_target = False
             elif (y, mo) > (year, month):
@@ -359,16 +407,57 @@ def render_news_section(news):
     if not news:
         return '<p class="empty">최근 관련 뉴스가 없습니다.</p>'
 
-    items = []
-    for n in news:
+    def render_item(n):
         link = html.escape(n["link"])
         title = html.escape(n["title"])
         summary = html.escape(n["summary"])
-        items.append(
+        return (
             f'<li class="row"><a class="row-title" href="{link}" target="_blank" '
             f'rel="noopener">{title}</a><p class="row-desc">{summary}</p></li>'
         )
-    return f'<ul class="list">{"".join(items)}</ul>'
+
+    # 카테고리별로 묶는다 (NEWS_CATEGORIES 순서 → 기타)
+    grouped = {}
+    for n in news:
+        cat = n.get("category", NEWS_OTHER_CATEGORY)
+        grouped.setdefault(cat, []).append(render_item(n))
+
+    category_order = [name for name, _ in NEWS_CATEGORIES] + [NEWS_OTHER_CATEGORY]
+    ordered_cats = [c for c in category_order if c in grouped]
+    if not ordered_cats:
+        return '<p class="empty">최근 관련 뉴스가 없습니다.</p>'
+
+    tabs = []
+    for i, cat in enumerate(ordered_cats):
+        active_cls = " news-tab--active" if i == 0 else ""
+        cat_esc = html.escape(cat)
+        tabs.append(
+            f'<button type="button" class="news-tab{active_cls}" data-cat="{cat_esc}" '
+            f"onclick=\"showNewsCategory('{cat_esc}')\">"
+            f'{cat_esc} <span class="tab-count">{len(grouped[cat])}</span></button>'
+        )
+
+    data_json = json.dumps(
+        {c: "".join(items) for c, items in grouped.items()}, ensure_ascii=False
+    )
+    first_cat = ordered_cats[0]
+
+    return (
+        f'<div class="news-tabs">{"".join(tabs)}</div>'
+        '<ul id="news-detail" class="list"></ul>'
+        f"""
+<script>
+  const newsByCategory = {data_json};
+  function showNewsCategory(cat) {{
+    document.querySelectorAll('.news-tab').forEach(function(b) {{
+      b.classList.toggle('news-tab--active', b.dataset.cat === cat);
+    }});
+    document.getElementById('news-detail').innerHTML = newsByCategory[cat] || '';
+  }}
+  showNewsCategory('{first_cat}');
+</script>
+"""
+    )
 
 
 def render_bills_section(bills):
@@ -389,6 +478,12 @@ def render_bills_section(bills):
             f'<p class="row-tag">키워드: {html.escape(kw)}</p></li>'
         )
     return f'<ul class="list">{"".join(items)}</ul>'
+
+
+def event_has_highlight(event):
+    """이벤트 안에 관심 키워드가 포함되어 있는지 확인한다."""
+    text = f"{event.get('content', '')} {event.get('committee', '')} {event.get('place', '')} {event.get('kind', '')}"
+    return any(kw in text for kw in SCHEDULE_HIGHLIGHT_KEYWORDS)
 
 
 def render_calendar_section(events_by_date):
@@ -420,6 +515,11 @@ def render_calendar_section(events_by_date):
             has_events = date_str in events_by_date and events_by_date[date_str]
             if has_events:
                 classes.append("cal-day--has-events")
+            is_flagged = has_events and any(
+                event_has_highlight(e) for e in events_by_date[date_str]
+            )
+            if is_flagged:
+                classes.append("cal-day--flagged")
             class_attr = " ".join(classes)
             dot_html = '<span class="cal-dot"></span>' if has_events else ""
             cells_html.append(
@@ -443,12 +543,38 @@ def render_calendar_section(events_by_date):
         + '<div id="cal-detail" class="cal-detail"></div>'
     )
 
-    # JS에서 쓸 데이터. 날짜별 요약 문자열 리스트를 그대로 넘긴다.
+    # JS에서 쓸 데이터. 날짜별 구조화된 이벤트 리스트를 그대로 넘긴다.
     data_json = json.dumps(events_by_date, ensure_ascii=False)
+    highlight_json = json.dumps(SCHEDULE_HIGHLIGHT_KEYWORDS, ensure_ascii=False)
 
     script = f"""
 <script>
   const scheduleData = {data_json};
+  const highlightKeywords = {highlight_json};
+
+  function escHtml(s) {{
+    return String(s).replace(/</g, '&lt;');
+  }}
+
+  function highlightText(s) {{
+    let out = escHtml(s);
+    highlightKeywords.forEach(function(kw) {{
+      if (!kw) return;
+      const escapedKw = kw.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&');
+      out = out.replace(new RegExp(escapedKw, 'g'), '<mark class="hl">' + kw + '</mark>');
+    }});
+    return out;
+  }}
+
+  function eventLine(e) {{
+    let line = '';
+    if (e.time) line += e.time + ' ';
+    line += e.content;
+    if (e.committee) line += ' (' + e.committee + ')';
+    if (e.place) line += ' @ ' + e.place;
+    return line;
+  }}
+
   function showScheduleDay(dateStr) {{
     document.querySelectorAll('.cal-day').forEach(el => el.classList.remove('cal-day--selected'));
     const btn = document.querySelector('.cal-day[data-date="' + dateStr + '"]');
@@ -458,12 +584,30 @@ def render_calendar_section(events_by_date):
     const detail = document.getElementById('cal-detail');
     const [y, m, d] = dateStr.split('-');
     let html = '<p class="cal-detail-date">' + y + '년 ' + parseInt(m) + '월 ' + parseInt(d) + '일</p>';
+
     if (events.length === 0) {{
       html += '<p class="empty">이 날짜에 예정된 일정이 없습니다.</p>';
     }} else {{
-      html += '<ul class="list">' + events.map(e =>
-        '<li class="row"><p class="row-desc">' + e.replace(/</g, '&lt;') + '</p></li>'
-      ).join('') + '</ul>';
+      // 종류(국회행사/위원회/본회의 등)별로 묶는다
+      const groups = {{}};
+      const order = [];
+      events.forEach(function(e) {{
+        const k = e.kind || '일정';
+        if (!groups[k]) {{ groups[k] = []; order.push(k); }}
+        groups[k].push(e);
+      }});
+
+      html += '<div class="cal-kind-columns">';
+      order.forEach(function(k) {{
+        html += '<div class="cal-kind-col">';
+        html += '<p class="cal-kind-title">' + escHtml(k) + ' <span class="cal-kind-count">' + groups[k].length + '</span></p>';
+        html += '<ul class="list list--tight">';
+        groups[k].forEach(function(e) {{
+          html += '<li class="row"><p class="row-desc">' + highlightText(eventLine(e)) + '</p></li>';
+        }});
+        html += '</ul></div>';
+      }});
+      html += '</div>';
     }}
     detail.innerHTML = html;
   }}
@@ -518,6 +662,7 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     --accent: #FFCD00;
     --accent-ink: #3E3A39;
     --accent-text: #96730A;
+    --flag: #E2574C;
     --text: #3E3A39;
     --muted: #8C8883;
     --line: #EBE9E5;
@@ -591,6 +736,30 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   .row:last-child {{
     border-bottom: 1px solid var(--line);
   }}
+  .list--tight .row {{
+    padding: 10px 0;
+  }}
+  /* 뉴스 "더 보기" 접기 */
+  details.more-toggle {{
+    margin-top: 2px;
+  }}
+  details.more-toggle summary {{
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent-text);
+    padding: 12px 0;
+    list-style: none;
+  }}
+  details.more-toggle summary::-webkit-details-marker {{
+    display: none;
+  }}
+  details.more-toggle summary::after {{
+    content: ' ▾';
+  }}
+  details.more-toggle[open] summary::after {{
+    content: ' ▴';
+  }}
   .row-title {{
     display: block;
     font-size: 15.5px;
@@ -618,6 +787,32 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     font-weight: 600;
     color: var(--accent-text);
     margin: 4px 0 0;
+  }}
+  /* 뉴스 카테고리 탭 */
+  .news-tabs {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 4px;
+  }}
+  .news-tab {{
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }}
+  .news-tab--active {{
+    color: var(--accent-ink);
+    background: var(--accent);
+    border-color: var(--accent);
+  }}
+  .tab-count {{
+    opacity: 0.7;
   }}
   .empty {{
     font-size: 13.5px;
@@ -664,6 +859,14 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     border-color: var(--ink);
     border-width: 2px;
   }}
+  .cal-day--flagged {{
+    border-color: var(--flag);
+    border-width: 2px;
+    background: #FDECEA;
+  }}
+  .cal-day--flagged .cal-dot {{
+    background: var(--flag);
+  }}
   .cal-day--selected {{
     background: var(--ink);
   }}
@@ -681,6 +884,12 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   .cal-day--selected .cal-dot {{
     background: var(--paper);
   }}
+  mark.hl {{
+    background: var(--accent);
+    color: var(--accent-ink);
+    padding: 0 2px;
+    border-radius: 2px;
+  }}
   .cal-detail {{
     margin-top: 20px;
   }}
@@ -689,6 +898,28 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     font-weight: 600;
     color: var(--ink);
     margin: 0 0 8px;
+  }}
+  /* 일정 상세: 종류별 병행 배치 */
+  .cal-kind-columns {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+  }}
+  .cal-kind-col {{
+    flex: 1 1 200px;
+    min-width: 180px;
+  }}
+  .cal-kind-title {{
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 0 0 2px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--accent);
+  }}
+  .cal-kind-count {{
+    font-weight: 400;
+    color: var(--muted);
   }}
   footer.brief-foot {{
     margin-top: 56px;
