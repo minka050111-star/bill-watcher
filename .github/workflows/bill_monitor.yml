@@ -3,9 +3,16 @@ name: Bill Monitor
 # 언제 실행할지 설정
 on:
   schedule:
-    # UTC 기준 0시 = 한국시간(KST) 오전 9시. 시간을 바꾸고 싶으면 이 값을 수정하세요.
-    - cron: '0 0 * * *'
+    # 한국시간(KST) 오전 9시~오후 6시, 매시간 정각 실행
+    # (UTC 기준 0~9시 = KST 9~18시. KST는 UTC+9시간입니다)
+    - cron: '0 0-9 * * *'
   workflow_dispatch: {}  # Actions 탭에서 "Run workflow" 버튼으로 수동 실행도 가능
+
+# 이전 실행이 아직 끝나지 않았으면 새로 실행하지 않고 기다리게 함
+# (동시에 두 번 실행돼서 git push가 충돌하는 것을 방지)
+concurrency:
+  group: bill-monitor
+  cancel-in-progress: false
 
 jobs:
   run:
@@ -35,5 +42,11 @@ jobs:
           git config --global user.name "bill-monitor-bot"
           git config --global user.email "bot@users.noreply.github.com"
           git add seen_bills.json
-          git diff --staged --quiet || git commit -m "update seen_bills.json [skip ci]"
-          git push
+          if ! git diff --staged --quiet; then
+            git commit -m "update seen_bills.json [skip ci]"
+            # 그 사이 원격에 다른 변경사항이 생겼을 수 있으니 먼저 받아온 뒤 push
+            git pull --rebase origin main
+            git push
+          else
+            echo "변경 사항 없음 - 커밋/푸시 생략"
+          fi
