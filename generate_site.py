@@ -349,11 +349,9 @@ def render_bills_section(bills):
 
 
 def render_calendar_section(events_by_date):
-    if events_by_date is None:
-        return (
-            '<p class="empty">국회일정 API 요청주소(SCHEDULE_API_URL)가 아직 설정되지 않았어요. '
-            "설정 방법은 스크립트 상단 주석을 참고하세요.</p>"
-        )
+    not_configured = events_by_date is None
+    if not_configured:
+        events_by_date = {}  # 빈 달력이라도 그려서 미리 보여주기 위함
 
     now = get_kst_now()
     year, month = now.year, now.month
@@ -391,9 +389,15 @@ def render_calendar_section(events_by_date):
             )
 
     calendar_html = (
-        f'<div class="cal-grid cal-grid--header">{header_html}</div>'
-        f'<div class="cal-grid">{"".join(cells_html)}</div>'
-        f'<div id="cal-detail" class="cal-detail"></div>'
+        (
+            '<p class="empty">국회일정 API 요청주소(SCHEDULE_API_URL)가 아직 설정되지 않았어요. '
+            "설정 방법은 스크립트 상단 주석을 참고하세요. (아래는 미리보기용 빈 달력이에요)</p>"
+            if not_configured
+            else ""
+        )
+        + f'<div class="cal-grid cal-grid--header">{header_html}</div>'
+        + f'<div class="cal-grid">{"".join(cells_html)}</div>'
+        + '<div id="cal-detail" class="cal-detail"></div>'
     )
 
     # JS에서 쓸 데이터. 날짜별 요약 문자열 리스트를 그대로 넘긴다.
