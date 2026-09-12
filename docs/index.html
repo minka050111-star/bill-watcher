@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>대외협력 데일리 브리핑</title>
+<style>
+  :root {
+    --ink: #14213D;
+    --paper: #FBF9F4;
+    --accent: #B8873A;
+    --text: #232017;
+    --muted: #6B6558;
+    --line: #DCD5C5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--text);
+    font-family: -apple-system, "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  }
+  .sheet {
+    max-width: 760px;
+    margin: 0 auto;
+    background: var(--paper);
+    min-height: 100vh;
+    padding: 56px 40px 80px;
+  }
+  header.brief-head {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 20px;
+    margin-bottom: 36px;
+  }
+  header.brief-head .kicker {
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    margin: 0 0 6px;
+  }
+  header.brief-head h1 {
+    font-family: Georgia, "Noto Serif KR", serif;
+    font-size: 30px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    color: var(--ink);
+  }
+  header.brief-head .date {
+    font-size: 14px;
+    color: var(--muted);
+    margin: 0;
+  }
+  section.block {
+    margin-bottom: 44px;
+  }
+  section.block h2 {
+    font-family: Georgia, "Noto Serif KR", serif;
+    font-size: 20px;
+    color: var(--ink);
+    margin: 0 0 4px;
+  }
+  section.block .section-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0 0 18px;
+  }
+  .list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .row {
+    padding: 16px 0;
+    border-top: 1px solid var(--line);
+  }
+  .row:last-child {
+    border-bottom: 1px solid var(--line);
+  }
+  .row-title {
+    display: block;
+    font-size: 15.5px;
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+    line-height: 1.4;
+  }
+  a.row-title:hover {
+    color: var(--accent);
+  }
+  .row-desc {
+    font-size: 13.5px;
+    color: var(--muted);
+    margin: 6px 0 0;
+    line-height: 1.5;
+  }
+  .row-meta {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin: 6px 0 0;
+  }
+  .row-tag {
+    font-size: 12px;
+    color: var(--accent);
+    margin: 4px 0 0;
+  }
+  .empty {
+    font-size: 13.5px;
+    color: var(--muted);
+    padding: 14px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  footer.brief-foot {
+    margin-top: 56px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+  <div class="sheet">
+    <header class="brief-head">
+      <p class="kicker">대외협력 데일리 브리핑</p>
+      <h1>오늘의 모빌리티 · 입법 동향</h1>
+      <p class="date">2026년 09월 12일 기준 자동 업데이트</p>
+    </header>
+
+    <section class="block">
+      <h2>카카오모빌리티 뉴스 클리핑</h2>
+      <p class="section-sub">네이버 뉴스 검색 기준 최신순</p>
+      <p class="empty">최근 관련 뉴스가 없습니다.</p>
+    </section>
+
+    <section class="block">
+      <h2>법안 발의 현황</h2>
+      <p class="section-sub">최근 7일, 관심 키워드 매칭</p>
+      <p class="empty">최근 7일 이내 관련 키워드가 포함된 발의 법안이 없습니다.</p>
+    </section>
+
+    <section class="block">
+      <h2>오늘의 국회 일정</h2>
+      <p class="section-sub">국회일정 통합 API 기준</p>
+      <p class="empty">국회일정 API 요청주소(SCHEDULE_API_URL)가 아직 설정되지 않았어요. 설정 방법은 스크립트 상단 주석을 참고하세요.</p>
+    </section>
+
+    <footer class="brief-foot">
+      이 페이지는 매일 자동으로 새로 생성됩니다. 문의: 대외협력팀
+    </footer>
+  </div>
+</body>
+</html>
