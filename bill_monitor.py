@@ -72,6 +72,9 @@ FETCH_DETAIL = True
 # 이미 알림을 보낸 법안 ID를 기록해두는 파일 (중복 알림 방지)
 SEEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seen_bills.json")
 
+# 디스코드 메시지에 넣을 요약문 최대 길이(글자 수)
+SUMMARY_MAX_LEN = 400
+
 # 의안정보 통합 API 요청 주소 (의안검색, 필수 파라미터 없음)
 BILL_LIST_URL = "https://open.assembly.go.kr/portal/openapi/TVBPMBILL11"
 
@@ -172,22 +175,47 @@ def find_matched_keywords(bill, detail_text=""):
     return [kw for kw in KEYWORDS if kw in haystack]
 
 
-def send_discord_notification(bill, matched):
+def extract_summary(detail_text, max_len=SUMMARY_MAX_LEN):
+    """상세페이지 텍스트에서 '제안이유' 또는 '주요내용' 부분을 찾아
+    앞부분만 잘라서 간단한 요약처럼 만든다. (진짜 AI 요약이 아니라
+    해당 구간의 원문 일부를 발췌하는 방식입니다.)
+    """
+    if not detail_text:
+        return ""
+
+    snippet = detail_text
+    for marker in ["제안이유 및 주요내용", "제안이유", "주요내용"]:
+        idx = detail_text.find(marker)
+        if idx != -1:
+            snippet = detail_text[idx:]
+            break
+
+    snippet = " ".join(snippet.split())  # 연속 공백/줄바꿈 정리
+    if len(snippet) > max_len:
+        snippet = snippet[:max_len].rstrip() + " …"
+    return snippet
+
+
+def send_discord_notification(bill, matched, summary=""):
     title = bill.get("BILL_NAME", "(제목 없음)")
     committee = bill.get("COMMITTEE", "-") or "-"
     proposer = bill.get("PROPOSER", "-") or "-"
     propose_dt = bill.get("PROPOSE_DT", "-") or "-"
     link = bill.get("DETAIL_LINK") or bill.get("LINK_URL") or ""
 
+    fields = [
+        {"name": "소관위원회", "value": committee, "inline": True},
+        {"name": "제안일자", "value": propose_dt, "inline": True},
+        {"name": "제안자", "value": proposer, "inline": False},
+        {"name": "매칭 키워드", "value": ", ".join(matched), "inline": False},
+    ]
+    if summary:
+        fields.append({"name": "세부내용 요약", "value": summary, "inline": False})
+
     embed = {
         "title": f"📢 새 발의법안: {title}",
         "color": 3447003,
-        "fields": [
-            {"name": "소관위원회", "value": committee, "inline": True},
-            {"name": "제안일자", "value": propose_dt, "inline": True},
-            {"name": "제안자", "value": proposer, "inline": False},
-            {"name": "매칭 키워드", "value": ", ".join(matched), "inline": False},
-        ],
+        "fields": fields,
     }
     if link.startswith("http"):
         embed["url"] = link
@@ -218,16 +246,21 @@ def main():
 
         # 1차: 제목 / 위원회 / 제안자 기준 키워드 검사
         matched = find_matched_keywords(bill)
+        detail_text = ""
 
-        # 2차: 1차에서 매칭이 없고 옵션이 켜져 있으면 상세페이지(제안이유·주요내용)까지 검사
-        if not matched and FETCH_DETAIL:
+        # 2차: 옵션이 켜져 있으면 상세페이지(제안이유·주요내용)를 가져온다.
+        #     - 1차에서 매칭이 안 됐으면: 여기서도 키워드 검사
+        #     - 1차에서 이미 매칭됐으면: 요약문을 만들기 위해서만 사용
+        if FETCH_DETAIL:
             link = bill.get("DETAIL_LINK") or bill.get("LINK_URL")
             detail_text = fetch_detail_text(link)
-            matched = find_matched_keywords(bill, detail_text)
+            if not matched:
+                matched = find_matched_keywords(bill, detail_text)
             time.sleep(0.5)  # 상세페이지 서버 부담 완화용 딜레이
 
         if matched:
-            send_discord_notification(bill, matched)
+            summary = extract_summary(detail_text)
+            send_discord_notification(bill, matched, summary)
             new_alert_count += 1
             print(f"  → 알림 전송: {bill.get('BILL_NAME')} (키워드: {', '.join(matched)})")
 
