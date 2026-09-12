@@ -91,10 +91,10 @@ def fetch_mobility_news():
 
     try:
         resp = requests.get(
-            "https://openapi.naver.com/v1/search/news.json",
+            "https://naverapihub.apigw.ntruss.com/search/v1/news",
             headers={
-                "X-Naver-Client-Id": NAVER_CLIENT_ID,
-                "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+                "X-NCP-APIGW-API-KEY-ID": NAVER_CLIENT_ID,
+                "X-NCP-APIGW-API-KEY": NAVER_CLIENT_SECRET,
             },
             params={"query": NEWS_QUERY, "display": NEWS_LIMIT, "sort": "date"},
             timeout=15,
