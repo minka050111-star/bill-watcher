@@ -110,6 +110,70 @@
     border-top: 1px solid var(--line);
     border-bottom: 1px solid var(--line);
   }
+  /* 달력 */
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+  }
+  .cal-grid--header {
+    margin-bottom: 6px;
+  }
+  .cal-dayname {
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    padding-bottom: 4px;
+  }
+  .cal-day {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border: 1px solid var(--line);
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cal-day-num {
+    font-size: 13px;
+    color: var(--text);
+  }
+  .cal-day--muted .cal-day-num {
+    color: var(--line);
+  }
+  .cal-day--today {
+    border-color: var(--ink);
+    border-width: 2px;
+  }
+  .cal-day--selected {
+    background: var(--ink);
+  }
+  .cal-day--selected .cal-day-num {
+    color: var(--paper);
+  }
+  .cal-dot {
+    position: absolute;
+    bottom: 5px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .cal-day--selected .cal-dot {
+    background: var(--paper);
+  }
+  .cal-detail {
+    margin-top: 20px;
+  }
+  .cal-detail-date {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0 0 8px;
+  }
   footer.brief-foot {
     margin-top: 56px;
     padding-top: 16px;
@@ -130,7 +194,7 @@
     <section class="block">
       <h2>카카오모빌리티 뉴스 클리핑</h2>
       <p class="section-sub">네이버 뉴스 검색 기준 최신순</p>
-      <ul class="list"><li class="row"><a class="row-title" href="https://www.newsis.com/view/NISX20260912_0003786713" target="_blank" rel="noopener">[김천소식]서울~김천김밥축제장 직행 셔틀버스 운영 등</a><p class="row-desc">시는 카카오 모빌리티와 협업하고 &#x27;카카오 T 셔틀&#x27; 서비스를 전격 도입한다. &#x27;2026 김천김밥축제&#x27;는 오는 10월 23일부터 25일까지 직지문화공원, 사명대사공원 일원에서 열린다. 셔틀버스는 축제 기간 동안 서울 주요 거점인...</p></li><li class="row"><a class="row-title" href="https://sports.khan.co.kr/article/202609120521003?pt=nv" target="_blank" rel="noopener">‘공유 모빌리티’ 선순환 이동구조 정착!···지쿠, 주차 민원 10건 중...</a><p class="row-desc">공유 모빌리티가 생활 이동수단으로 자리 잡으면서, 주차 민원 10건 중 4건은 시민들의 이동 흐름 속에... 평일 오전 9시부터 밤 10시까지 카카오톡 채팅 상담도 병행해 전화가 어려운 상황이나 퇴근 이후에도 신고할 수...</p></li><li class="row"><a class="row-title" href="https://www.asiatime.co.kr/article/20260911500352" target="_blank" rel="noopener">[카드 뉴스브리핑] 신한카드 &#x27;아이폰 18 시리즈&#x27; 출시 기념 이벤트 진행</a><p class="row-desc">□ 티머니모빌리티 택시업계와 업무협약 체결 티머니모빌리티가 택시업계와 모두를 위한 로보택시 생태계... □ 카카오페이 &#x27;사각사각 페이스쿨 주니어캠프&#x27; 개강 카카오페이가 도서산간 지역 청소년을 위한 금융...</p></li><li class="row"><a class="row-title" href="https://www.sidae.com/article/2026091113271517683" target="_blank" rel="noopener">서울 자율주행 택시 3파전, 카카오 수성 가능할까</a><p class="row-desc">서울시가 자율주행자동차 운송플랫폼 사업자로 카카오모빌리티, 현대자동차, 티머니모빌리티 3곳을 선정하며 카카오모빌리티 단독 체제였던 시장이 3파전 구도로 재편됐다. 2년 앞서 서비스를 시작한 카카오모빌리티가...</p></li><li class="row"><a class="row-title" href="https://www.newspim.com/news/view/20260911000956" target="_blank" rel="noopener">AI가 결제수단까지 선택…카드사, &#x27;에이전트 페이&#x27; 선점 사활</a><p class="row-desc">과기정통부는 SK텔레콤·카카오·KT 등 3개 컨소시엄을 사업자로 선정했으며 오는 12월 대국민 서비스 개시를... 향후 모빌리티와 쇼핑, 예약 등 컨소시엄 참여 기업과 연계해 여행·쇼핑·여가·공공요금 등으로 AI 결제...</p></li><li class="row"><a class="row-title" href="http://www.bizwnews.com/news/articleView.html?idxno=146041" target="_blank" rel="noopener">[車산업 HOT 뉴스] &quot;기름 한 번 넣고 1400㎞ 달린다고&quot;…BYD &#x27;씨라이언 6...</a><p class="row-desc">지난 6월 2026 부산모빌리티쇼에서 첫선을 보였을 당시만 해도 3750만원이라는 한 파격적인 가격표가... 사진=BYD코리아 ◆ 3750만원에 카카오내비·통풍시트 기본…&quot;국내 PHEV 판도 바꾼다&quot; 소비자들의 기대를 모으는...</p></li><li class="row"><a class="row-title" href="https://biz.heraldcorp.com/article/10870752?ref=naver" target="_blank" rel="noopener">[단독] 구글 웨이모 이어 中 바이두도 韓 법인 세웠다…‘로보택시’ 경...</a><p class="row-desc">카카오모빌리티는 지난 3월부터 서울 강남 일대에서 자체 자율주행 기술을 적용한 택시 서비스를 운영하고 있다. 초기 2대로 시작한 운행 차량을 지난달 6대로 늘리면서 실증 규모도 확대 중이다. 현대차와...</p></li><li class="row"><a class="row-title" href="https://www.news2day.co.kr/article/20260911500098" target="_blank" rel="noopener">[경제 인사이드] 한화에너지는 되고 CJ올리브영, HD현대로보틱스는 안된...</a><p class="row-desc">현재 IPO를 기다리는 몸집이 큰 회사로는 CJ그룹의 CJ올리브영, HD현대의 현대오일뱅크와 현대로보틱스, 무신사, 카카오모빌리티, K뱅크 등이 있다. 대부분 AI(인공지능), 첨단 사업 투자를 위한 자본조달이 필요한...</p></li></ul>
+      <ul class="list"><li class="row"><a class="row-title" href="http://www.efnews.co.kr/news/articleView.html?idxno=132370" target="_blank" rel="noopener">아이폰18 프로·프로맥스 사전예약 시작…SKT·KT·LGU+ 혜택 경쟁 돌입</a><p class="row-desc">사전예약 고객에게 &#x27;클럽 아이폰 18 프로&#x27; 혜택을 제공하며, 개통 고객에게 카카오 이모티콘 플러스 2개월 이용권과 아웃백 쿠폰 등을 제공한다. 10월 18일까지 아이폰 신제품을 개통하는 고객에게는 T 우주의 구글 AI...</p></li><li class="row"><a class="row-title" href="https://www.edaily.co.kr/News/Read?newsId=01922086645579464&amp;mediaCodeNo=257&amp;utm_source=naver&amp;utm_medium=referral&amp;utm_campaign=news_syndication&amp;utm_content=original_article" target="_blank" rel="noopener">아이폰 18 프로, 오늘 밤 9시 사전예약…최고가 399만원</a><p class="row-desc">사전예약 및 개통 고객에게 플래그십 전용 멤버십인 ‘클럽 아이폰 18 프로’ 혜택을 제공해 메가MGC커피 쿠폰, 카카오 이모티콘 이용권, 아웃백 쿠폰 등을 증정하고, 10월 18일까지 개통 시 구글 AI Plus 2개월 및 티빙...</p></li><li class="row"><a class="row-title" href="https://www.thepublic.kr/news/articleView.html?idxno=318462" target="_blank" rel="noopener">SKT, 아이폰18 프로·프로맥스 사전예약…T다이렉트샵 단독 2TB 판매</a><p class="row-desc">혜택과 카카오 이모티콘 플러스 2개월 이용권, 아웃백 베이비 백 립 무료 쿠폰 등이 제공된다. 아이폰 신제품을 10월 18일까지 개통한 고객에게는 T 우주의 구글 AI Plus 400GB 2개월 구독권과 티빙 광고형 스탠다드...</p></li><li class="row"><a class="row-title" href="https://www.newsis.com/view/NISX20260912_0003786713" target="_blank" rel="noopener">[김천소식]서울~김천김밥축제장 직행 셔틀버스 운영 등</a><p class="row-desc">시는 카카오 모빌리티와 협업하고 &#x27;카카오 T 셔틀&#x27; 서비스를 전격 도입한다. &#x27;2026 김천김밥축제&#x27;는 오는 10월 23일부터 25일까지 직지문화공원, 사명대사공원 일원에서 열린다. 셔틀버스는 축제 기간 동안 서울 주요 거점인...</p></li><li class="row"><a class="row-title" href="https://zdnet.co.kr/view/?no=20260911212856" target="_blank" rel="noopener">200만원 아이폰18 오늘부터 예약...통신 3사 할인 경쟁</a><p class="row-desc">KT닷컴 카카오톡 채널을 추가하면 휴대폰 구매에 사용할 수 있는 5만원 할인 쿠폰을 제공한다. KT로 번호이동하는 가입자 선착순 1000명에게는 케이스티파이 5만원권을 증정한다. LGU+, 최대 20만원 단말 할인......</p></li><li class="row"><a class="row-title" href="https://www.cbci.co.kr/news/articleView.html?idxno=606028" target="_blank" rel="noopener">아이폰18 프로 12일 사전예약 돌입… 이통 3사, 지원금·보상판매 총력...</a><p class="row-desc">현대카드 결제 시 카드 종류와 전월 실적에 따라 무이자 할부와 쿠폰팩이 제공되며, 공식 카카오톡 채널을 통한 할인 쿠폰도 지급된다. KT는 사전예약 고객을 대상으로 정식 출시일에 제품을 바로 받아볼 수 있는...</p></li><li class="row"><a class="row-title" href="https://sports.khan.co.kr/article/202609120521003?pt=nv" target="_blank" rel="noopener">‘공유 모빌리티’ 선순환 이동구조 정착!···지쿠, 주차 민원 10건 중...</a><p class="row-desc">공유 모빌리티가 생활 이동수단으로 자리 잡으면서, 주차 민원 10건 중 4건은 시민들의 이동 흐름 속에... 평일 오전 9시부터 밤 10시까지 카카오톡 채팅 상담도 병행해 전화가 어려운 상황이나 퇴근 이후에도 신고할 수...</p></li><li class="row"><a class="row-title" href="https://news.hidoc.co.kr/news/articleView.html?idxno=67417" target="_blank" rel="noopener">코로나19·독감 이례적 동반 증가, 추석 앞두고 &#x27;비상&#x27;…&quot;콧속 방어력 높...</a><p class="row-desc">카모스타트 성분, 점막 표면에서 바이러스 침투 차단한다 최근에는 점막 방어력을 보완하기 위안... 이때 대표적으로 거론되는 성분이 &#x27;카모스타트(Camostat Mesilate)&#x27;다. 코로나19 바이러스는 코 점막 상피세포의 ACE2...</p></li><li class="row"><a class="row-title" href="https://www.asiatime.co.kr/article/20260911500352" target="_blank" rel="noopener">[카드 뉴스브리핑] 신한카드 &#x27;아이폰 18 시리즈&#x27; 출시 기념 이벤트 진행</a><p class="row-desc">□ 티머니모빌리티 택시업계와 업무협약 체결 티머니모빌리티가 택시업계와 모두를 위한 로보택시 생태계... □ 카카오페이 &#x27;사각사각 페이스쿨 주니어캠프&#x27; 개강 카카오페이가 도서산간 지역 청소년을 위한 금융...</p></li><li class="row"><a class="row-title" href="https://www.sidae.com/article/2026091113271517683" target="_blank" rel="noopener">서울 자율주행 택시 3파전, 카카오 수성 가능할까</a><p class="row-desc">서울시가 자율주행자동차 운송플랫폼 사업자로 카카오모빌리티, 현대자동차, 티머니모빌리티 3곳을 선정하며 카카오모빌리티 단독 체제였던 시장이 3파전 구도로 재편됐다. 2년 앞서 서비스를 시작한 카카오모빌리티가...</p></li><li class="row"><a class="row-title" href="http://www.00news.co.kr/news/articleView.html?idxno=106536" target="_blank" rel="noopener">[아이폰18 프로 사전예약] 이통3사, 할인·AI·경품 총공세</a><p class="row-desc">사전예약 개통 고객 전원에게는 ▲카카오 이모티콘 플러스 2개월 이용권 ▲아웃백 베이비 백 립 무료 쿠폰을 증정한다. 10월 18일까지 개통을 완료하는 고객에게는 T 우주의 구글 AI Plus(400GB) 2개월 구독권과 티빙...</p></li><li class="row"><a class="row-title" href="https://www.newspim.com/news/view/20260911000956" target="_blank" rel="noopener">AI가 결제수단까지 선택…카드사, &#x27;에이전트 페이&#x27; 선점 사활</a><p class="row-desc">과기정통부는 SK텔레콤·카카오·KT 등 3개 컨소시엄을 사업자로 선정했으며 오는 12월 대국민 서비스 개시를... 향후 모빌리티와 쇼핑, 예약 등 컨소시엄 참여 기업과 연계해 여행·쇼핑·여가·공공요금 등으로 AI 결제...</p></li></ul>
     </section>
 
     <section class="block">
@@ -141,7 +205,7 @@
 
     <section class="block">
       <h2>오늘의 국회 일정</h2>
-      <p class="section-sub">국회일정 통합 API 기준</p>
+      <p class="section-sub">날짜를 클릭하면 그날 일정을 볼 수 있어요</p>
       <p class="empty">국회일정 API 요청주소(SCHEDULE_API_URL)가 아직 설정되지 않았어요. 설정 방법은 스크립트 상단 주석을 참고하세요.</p>
     </section>
 
