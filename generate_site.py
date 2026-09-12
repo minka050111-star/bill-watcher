@@ -67,8 +67,12 @@ BILL_LIST_URL = "https://open.assembly.go.kr/portal/openapi/TVBPMBILL11"
 BILL_AGE = "22"
 
 # 국회일정 API (ALLSCHEDULE) — ASSEMBLY_API_KEY를 그대로 재사용합니다. 별도 키 불필요.
-SCHEDULE_API_URL = os.environ.get(
-    "SCHEDULE_API_URL", "https://open.assembly.go.kr/portal/openapi/ALLSCHEDULE"
+# 주의: os.environ.get(키, 기본값)은 "환경변수가 아예 없을 때"만 기본값을 씁니다.
+# GitHub Actions는 secret을 등록 안 해도 빈 문자열("")로 변수를 넘기기 때문에,
+# 빈 문자열이면 기본값을 쓰도록 `or`로 한 번 더 처리합니다.
+SCHEDULE_API_URL = (
+    os.environ.get("SCHEDULE_API_URL")
+    or "https://open.assembly.go.kr/portal/openapi/ALLSCHEDULE"
 )
 # 한 페이지당 몇 건씩 가져올지. 이번 달 데이터를 찾을 때까지 페이지를 넘기며 훑습니다.
 SCHEDULE_PAGE_SIZE = 100
@@ -477,20 +481,53 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>대외협력 데일리 브리핑</title>
 <style>
+  @font-face {{
+    font-family: 'KakaoBigFont';
+    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2503@1.0/KakaoBigSans-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-display: swap;
+  }}
+  @font-face {{
+    font-family: 'KakaoBigFont';
+    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2503@1.0/KakaoBigSans-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-display: swap;
+  }}
+  @font-face {{
+    font-family: 'KakaoBigFont';
+    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2503@1.0/KakaoBigSans-ExtraBold.woff2') format('woff2');
+    font-weight: 800;
+    font-display: swap;
+  }}
+  @font-face {{
+    font-family: 'KakaoSmallFont';
+    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2503@1.0/KakaoSmallSans-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-display: swap;
+  }}
+  @font-face {{
+    font-family: 'KakaoSmallFont';
+    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2503@1.0/KakaoSmallSans-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-display: swap;
+  }}
   :root {{
-    --ink: #14213D;
-    --paper: #FBF9F4;
-    --accent: #B8873A;
-    --text: #232017;
-    --muted: #6B6558;
-    --line: #DCD5C5;
+    --ink: #3E3A39;
+    --paper: #FFFFFF;
+    --outer: #F4F3F1;
+    --accent: #FFCD00;
+    --accent-ink: #3E3A39;
+    --accent-text: #96730A;
+    --text: #3E3A39;
+    --muted: #8C8883;
+    --line: #EBE9E5;
   }}
   * {{ box-sizing: border-box; }}
   body {{
     margin: 0;
-    background: var(--ink);
+    background: var(--outer);
     color: var(--text);
-    font-family: -apple-system, "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    font-family: 'KakaoSmallFont', -apple-system, "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   }}
   .sheet {{
     max-width: 760px;
@@ -505,15 +542,20 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     margin-bottom: 36px;
   }}
   header.brief-head .kicker {{
-    font-size: 13px;
-    letter-spacing: 0.04em;
-    color: var(--accent);
-    margin: 0 0 6px;
+    display: inline-block;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--accent-ink);
+    background: var(--accent);
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin: 0 0 14px;
   }}
   header.brief-head h1 {{
-    font-family: Georgia, "Noto Serif KR", serif;
+    font-family: 'KakaoBigFont', -apple-system, sans-serif;
     font-size: 30px;
-    font-weight: 600;
+    font-weight: 800;
     margin: 0 0 8px;
     color: var(--ink);
   }}
@@ -526,8 +568,9 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     margin-bottom: 44px;
   }}
   section.block h2 {{
-    font-family: Georgia, "Noto Serif KR", serif;
-    font-size: 20px;
+    font-family: 'KakaoBigFont', -apple-system, sans-serif;
+    font-weight: 700;
+    font-size: 19px;
     color: var(--ink);
     margin: 0 0 4px;
   }}
@@ -557,7 +600,7 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     line-height: 1.4;
   }}
   a.row-title:hover {{
-    color: var(--accent);
+    color: var(--accent-text);
   }}
   .row-desc {{
     font-size: 13.5px;
@@ -572,7 +615,8 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   }}
   .row-tag {{
     font-size: 12px;
-    color: var(--accent);
+    font-weight: 600;
+    color: var(--accent-text);
     margin: 4px 0 0;
   }}
   .empty {{
