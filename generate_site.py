@@ -21,13 +21,8 @@
 
 2) 법안 발의 현황: bill_monitor.py에서 쓰던 ASSEMBLY_API_KEY 그대로 재사용합니다.
 
-3) 오늘의 국회 일정: "국회일정 통합 API"의 실제 요청주소(짧은 해시 URL)를
-   확인해서 SCHEDULE_API_URL 에 넣어야 합니다.
-   확인 방법: open.assembly.go.kr 에 로그인 후
-   https://open.assembly.go.kr/portal/data/service/selectAPIServicePage.do/OOWY4R001216HX11437
-   페이지에서 "요청주소" 부분을 확인하세요 (로그인해야 정확히 보입니다).
-   아직 못 찾으셨으면 SCHEDULE_API_URL을 비워두세요 — 그 섹션은
-   "설정 필요" 안내만 표시되고 나머지는 정상 작동합니다.
+3) 오늘의 국회 일정: "국회일정 통합 API"(ALLSCHEDULE)도 ASSEMBLY_API_KEY를 그대로
+   재사용합니다. 별도 키 발급이 필요 없어요.
 
 4) pip install requests
 """
@@ -71,9 +66,13 @@ BILL_LIMIT = 15
 BILL_LIST_URL = "https://open.assembly.go.kr/portal/openapi/TVBPMBILL11"
 BILL_AGE = "22"
 
-# 국회일정 API (요청주소를 확인한 뒤 채워주세요. 비워두면 "설정 필요"로 표시됩니다)
-SCHEDULE_API_URL = os.environ.get("SCHEDULE_API_URL", "")
-SCHEDULE_LIMIT = 15
+# 국회일정 API (ALLSCHEDULE) — ASSEMBLY_API_KEY를 그대로 재사용합니다. 별도 키 불필요.
+SCHEDULE_API_URL = os.environ.get(
+    "SCHEDULE_API_URL", "https://open.assembly.go.kr/portal/openapi/ALLSCHEDULE"
+)
+# 한 페이지당 몇 건씩 가져올지. 이번 달 데이터를 찾을 때까지 페이지를 넘기며 훑습니다.
+SCHEDULE_PAGE_SIZE = 100
+SCHEDULE_MAX_PAGES = 60  # 안전장치: 최대 이만큼만 페이지를 넘김 (전체 9만여 건 중 일부만 훑음)
 
 OUTPUT_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "docs", "index.html"
@@ -232,8 +231,18 @@ _DATE_PATTERN = re.compile(r"(20\d{2})[.\-](\d{1,2})[.\-](\d{1,2})")
 
 
 def extract_date_from_row(row):
-    """행(row) 안의 값들 중 날짜처럼 보이는 첫 값을 찾아 'YYYY-MM-DD'로 반환한다.
-    국회일정 API의 정확한 필드명을 몰라도 동작하도록 만든 방식이다."""
+    """행(row)에서 날짜를 찾는다. ALLSCHEDULE API는 SCH_DT 필드에 'YYYY-MM-DD'로 들어있다.
+    혹시 다른 필드 구조의 API로 바뀌어도 동작하도록, 없으면 모든 값에서 날짜 패턴을 찾는다."""
+    sch_dt = row.get("SCH_DT")
+    if sch_dt:
+        m = _DATE_PATTERN.search(str(sch_dt))
+        if m:
+            y, mo, d = m.groups()
+            try:
+                return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
+            except ValueError:
+                pass
+
     for v in row.values():
         if not v:
             continue
@@ -248,12 +257,33 @@ def extract_date_from_row(row):
 
 
 def summarize_row(row):
-    """행의 값들을 사람이 읽을 수 있는 한 줄 문자열로 합친다."""
+    """행을 사람이 읽기 좋은 한 줄로 요약한다.
+    ALLSCHEDULE API의 필드(SCH_TM, SCH_KIND, SCH_CN, CMIT_NM, EV_PLC)가 있으면 그걸 활용하고,
+    다른 구조의 API라면 값들을 그냥 나열한다."""
+    if "SCH_CN" in row:
+        parts = []
+        if row.get("SCH_TM"):
+            parts.append(row["SCH_TM"])
+        if row.get("SCH_KIND"):
+            parts.append(f"[{row['SCH_KIND']}]")
+        if row.get("SCH_CN"):
+            parts.append(row["SCH_CN"])
+        if row.get("CMIT_NM"):
+            parts.append(f"({row['CMIT_NM']})")
+        if row.get("EV_PLC"):
+            parts.append(f"@ {row['EV_PLC']}")
+        return " ".join(parts)
+
     return " · ".join(str(v) for v in row.values() if v not in (None, ""))
 
 
 def fetch_month_schedule():
-    """이번 달 국회 일정을 날짜별로 묶어서 돌려준다: {'YYYY-MM-DD': [요약문, ...]}"""
+    """이번 달 국회 일정을 날짜별로 묶어서 돌려준다: {'YYYY-MM-DD': [요약문, ...]}
+
+    ALLSCHEDULE API는 전체 9만여 건을 날짜 내림차순(먼 미래 → 과거)으로 돌려주고
+    별도의 날짜 필터 파라미터가 없다. 그래서 페이지를 넘기며 훑다가,
+    '이번 달 일정을 이미 찾았는데 + 이번 페이지가 전부 이번 달보다 과거'인 시점에
+    더 훑어봐야 의미가 없다고 보고 중단한다."""
     if not SCHEDULE_API_URL:
         return None  # 아직 엔드포인트 미설정
 
@@ -262,8 +292,9 @@ def fetch_month_schedule():
 
     events_by_date = {}
     p_index = 1
+    found_target_month = False
 
-    while p_index <= 20:  # 안전장치: 최대 20페이지(2,000건)까지만
+    while p_index <= SCHEDULE_MAX_PAGES:
         try:
             resp = requests.get(
                 SCHEDULE_API_URL,
@@ -271,7 +302,7 @@ def fetch_month_schedule():
                     "KEY": ASSEMBLY_API_KEY,
                     "Type": "json",
                     "pIndex": p_index,
-                    "pSize": 100,
+                    "pSize": SCHEDULE_PAGE_SIZE,
                 },
                 timeout=20,
             )
@@ -291,6 +322,7 @@ def fetch_month_schedule():
         if not rows:
             break
 
+        page_all_before_target = True
         for row in rows:
             date_str = extract_date_from_row(row)
             if not date_str:
@@ -298,6 +330,13 @@ def fetch_month_schedule():
             y, mo, _ = map(int, date_str.split("-"))
             if y == year and mo == month:
                 events_by_date.setdefault(date_str, []).append(summarize_row(row))
+                found_target_month = True
+                page_all_before_target = False
+            elif (y, mo) > (year, month):
+                page_all_before_target = False  # 아직 미래 달 → 계속 진행
+
+        if found_target_month and page_all_before_target:
+            break  # 이번 달을 지나쳐서 과거로 넘어갔으므로 중단
 
         p_index += 1
 
